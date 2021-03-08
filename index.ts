@@ -3,6 +3,7 @@ import { GraphQLServer } from 'graphql-yoga';
 //Type Definitions - Application Schema
 const typeDefs = `
     type Query {
+        greeting(name: String): String!
         title: String!
         price: Float!
         releaseYear: Int,
@@ -10,6 +11,8 @@ const typeDefs = `
         inStock: Boolean!
         me: User!
         post: Post!
+        add(numbers: [Int!]!): Float!
+        grades: [Float!]!
     }
     
     type User {
@@ -30,6 +33,10 @@ const typeDefs = `
 //Resolvers
 const resolvers = {
     Query: {
+        grades(){
+            return [100,98,100]
+        },
+
         title(){
             return "Die Hard"
         },
@@ -60,6 +67,18 @@ const resolvers = {
                 body: "A great post",
                 published: true
             }
+        },
+        greeting(parent, args, ctx, info){
+            if(args.name){
+                return `Hello ${args.name}`
+            }
+            return "Hello"
+        },
+        add(parent, args){
+            if(args.numbers.length !== 0){
+                return args.numbers.reduce((total, cur) => total + cur);
+            }
+            return 0
         }
     },
 
