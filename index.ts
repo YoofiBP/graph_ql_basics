@@ -1,5 +1,7 @@
 import { GraphQLServer } from 'graphql-yoga';
 import {users, comments, posts} from './database';
+import { v4 as uuidv4 } from 'uuid';
+import {resourceExists} from "./utils";
 
 //Type Definitions - Application Schema
 const typeDefs = `
@@ -17,6 +19,12 @@ const typeDefs = `
         add(numbers: [Int!]!): Float!
         grades: [Float!]!
         comments: [Comment!]!
+    }
+    
+    type Mutation {
+        createUser(name: String!, email: String!, age: Int): User!
+        createPost(title: String!, body: String!, published: Boolean!, author: ID!): Post!
+        createComment(text: String!, author: ID!, post: ID!): Comment!
     }
     
     type User {
@@ -97,7 +105,7 @@ const resolvers = {
                 published: true
             }
         },
-        greeting(parent, args, ctx, info){
+        greeting(parent, args){
             if(args.name){
                 return `Hello ${args.name}`
             }
@@ -108,6 +116,68 @@ const resolvers = {
                 return args.numbers.reduce((total, cur) => total + cur);
             }
             return 0
+        }
+    },
+
+    Mutation: {
+        createUser(parent, args){
+            if(args){
+                const {name, email, age} = args;
+                const emailTaken = resourceExists(users, email, "email");
+                if(emailTaken){
+                    throw new Error('Email Taken');
+                }
+                const id = uuidv4();
+                const user = {
+                    id,
+                    name,
+                    email,
+                    age
+                }
+                users.push(user);
+                return user;
+
+            }
+        },
+
+        createPost(parent, args){
+            if(args){
+                const { author } = args;
+                const validAuthor = resourceExists(users, author, "id");
+                if(!validAuthor){
+                    throw new Error('Author does not exist')
+                }
+                const id = uuidv4();
+                const post = {
+                    id,
+                   ...args
+                }
+
+                posts.push(post)
+                return post;
+            }
+        },
+
+        createComment(parent, args){
+            if(args){
+                const {author, post} = args;
+                const user = resourceExists(users, author, "id");
+                if(!user){
+                    throw new Error('User does not exist')
+                }
+                const postFound = resourceExists(posts, post, "id");
+                if(!postFound || !postFound.published ){
+                    throw new Error('Post does not exist')
+                }
+                const comment = {
+                    id: uuidv4(),
+                    ...args
+                }
+
+                comments.push(comment);
+
+                return comment
+            }
         }
     },
 
