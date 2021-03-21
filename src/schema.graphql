@@ -28,6 +28,31 @@ type Mutation {
     updateComment(commentId: ID!, data: UpdateCommentInput): Comment
 }
 
+type Subscription {
+    comment: CommentSubscriptionPayload!
+    post: PostSubscriptionPayload!
+}
+
+enum MutationType {
+    CREATED
+    UPDATED
+    DELETED
+}
+
+interface SubscriptionPaylod {
+    mutation: MutationType!
+}
+
+type PostSubscriptionPayload implements SubscriptionPaylod{
+    mutation: MutationType!
+    data: Post!
+}
+
+type CommentSubscriptionPayload implements SubscriptionPaylod{
+    mutation: MutationType!
+    data: Comment!
+}
+
 input CreateUserInput {
     name: String!
     email: String!

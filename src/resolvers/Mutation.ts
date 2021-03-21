@@ -1,6 +1,6 @@
 import {resourceExists} from "../../utils";
 import {v4 as uuidv4} from 'uuid';
-import db from "../database";
+import {PubSub} from "graphql-yoga";
 
 const mutation = {
     createUser(parent, args, {db}) {
@@ -31,7 +31,7 @@ const mutation = {
                 throw new Error('User not found')
             }
             Object.keys(data).forEach(attribute => {
-                if(user[attribute]){
+                if (user[attribute]) {
                     user[attribute] = data[attribute]
                 }
             })
@@ -72,8 +72,9 @@ const mutation = {
         }
     },
 
-    deletePost(parent, args, ctx) {
+    deletePost(parent, args, {db, pubSub}) {
         if (args) {
+            const mutation = "DELETED";
             const {postId} = args;
             const post = db.posts.find(post => post.id === postId);
 
@@ -86,12 +87,20 @@ const mutation = {
             //remove related comments
             db.comments = db.comments.filter(comment => comment.post !== postId)
 
+            post.published && pubSub.publish('posts', {
+                post: {
+                    mutation,
+                    data: post
+                }
+            })
+
             return post
         }
     },
 
-    createPost(parent, args, {db}) {
+    createPost(parent, args, {db, pubSub}) {
         if (args.data) {
+            const mutation = "CREATED"
             const {author} = args.data;
             const validAuthor = resourceExists(db.users, author, "id");
             if (!validAuthor) {
@@ -104,34 +113,67 @@ const mutation = {
             }
 
             db.posts.push(post)
+            post.published && pubSub.publish('posts', {post: {mutation, data: post}})
+
             return post;
         }
     },
 
-    updatePost(parent, {postId, data}, {db}){
-        if(data) {
+    updatePost(parent, {postId, data}, {db, pubSub}) {
+        if (data) {
             const post = db.posts.find(post => post.id === postId);
-            if(!post){
+            if (!post) {
                 throw new Error('Post does not exist')
             }
-            if(data.author){
+            const originalPost = {...post};
+
+            if (data.author) {
                 const user = db.users.find(user => user.id === data.author)
-                if(!user){
+                if (!user) {
                     throw new Error('User does not exist')
                 }
             }
 
             Object.keys(data).forEach(key => {
-                if(post[key]){
+                if (post[key] !== null || post[key] !== undefined) {
                     post[key] = data[key]
                 }
             })
+
+
+            const output = {
+                mutation: '',
+                data: post
+            }
+
+            if (originalPost.published && !post.published) {
+                //fire delete
+                pubSub.publish('posts', {
+                    post: {
+                        ...output, mutation: 'DELETED'
+                    }
+                })
+            } else if (!originalPost.published && post.published) {
+                //fire create
+                pubSub.publish('posts', {
+                    post: {
+                        ...output, mutation: 'CREATED'
+                    }
+                })
+            } else if (post.published) {
+                //fire update
+                pubSub.publish('posts', {
+                    post: {
+                        ...output, mutation: 'UPDATED'
+                    }
+                })
+            }
 
             return post;
         }
     },
 
-    createComment(parent, args, {db}) {
+    createComment(parent, args, {db, pubSub}: { db: any; pubSub: PubSub }) {
         if (args) {
             const {author, post} = args.data;
             const user = resourceExists(db.users, author, "id");
@@ -149,11 +191,18 @@ const mutation = {
 
             db.comments.push(comment);
 
+            pubSub.publish(`comments`, {
+                comment: {
+                    mutation: 'CREATED',
+                    data: comment
+                }
+            })
+
             return comment
         }
     },
 
-    deleteComment(parent, args, {db}) {
+    deleteComment(parent, args, {db, pubSub}) {
         if (args) {
             const {commentId} = args;
 
@@ -165,36 +214,50 @@ const mutation = {
 
             db.comments = db.comments.filter(comment => comment.id !== commentId);
 
+            pubSub.publish(`comments`, {
+                comment: {
+                    mutation: 'DELETED',
+                    data: comment
+                }
+            })
+
             return comment;
         }
     },
 
-    updateComment(parent, {commentId, data}, {db}){
-        if(data){
+    updateComment(parent, {commentId, data}, {db, pubSub}) {
+        if (data) {
             //check if post exists
             const comment = db.comments.find(comment => comment.id === commentId);
 
-            if(!comment){
+            if (!comment) {
                 throw new Error("Comment not found")
             }
 
-            if(data.post){
+            if (data.post) {
                 const post = db.posts.find(post => post.id === data.post);
-                if(!post){
+                if (!post) {
                     throw new Error('Post does not exist')
                 }
             }
 
-            if(data.author){
+            if (data.author) {
                 const user = db.users.find(user => user.id === data.author);
-                if(!user){
+                if (!user) {
                     throw new Error('Post does not exist')
                 }
             }
 
             Object.keys(data).forEach(key => {
-                if(comment[key]){
+                if (comment[key]) {
                     comment[key] = data[key]
+                }
+            })
+
+            pubSub.publish(`comments`, {
+                comment: {
+                    mutation: 'UPDATED',
+                    data: comment
                 }
             })
             return comment;
